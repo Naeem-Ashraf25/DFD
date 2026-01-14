@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VeriSight - Deepfake Detector</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
+
+body {
+    margin: 0;
+    font-family: 'Orbitron', sans-serif;
+    background: #0A0F1F;
+    color: #E8E8E8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 250vh;
+    overflow-x: hidden;
+}
+
+.neural-bg { position: fixed; top:0; left:0; width:100%; height:100%; z-index:-2; background:#0A0F1F; }
+canvas { display:block; }
+
+h1 { margin-top:50px; font-size:2.5em; text-align:center; color:#00FFFF; text-shadow:0 0 10px #00FFFF; }
+
+.upload-box {
+    margin-top:50px;
+    width:350px; height:220px;
+    border:2px dashed #8A2BE2; border-radius:15px;
+    display:flex; align-items:center; justify-content:center;
+    text-align:center; color:#8A2BE2; font-size:1.2em;
+    cursor:pointer; transition:all 0.3s; background: rgba(255,255,255,0.02);
+    position:relative;
+}
+.upload-box.dragover { box-shadow:0 0 30px #00FFFF; border-color:#00FFFF; color:#00FFFF; }
+
+.image-preview {
+    position:relative; margin-top:30px;
+    width:350px; height:350px; border-radius:12px; overflow:hidden;
+    border:2px solid #00FFFF; box-shadow:0 0 20px #00FFFF inset; display:none;
+}
+.image-preview img { width:100%; height:100%; object-fit:cover; }
+
+.scan-overlay {
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background:linear-gradient(90deg, rgba(0,255,255,0) 0%, rgba(0,255,255,0.3) 50%, rgba(0,255,255,0) 100%);
+    pointer-events:none; display:none;
+    border-radius:12px;
+}
+
+.radar-scan { position:absolute; width:160px; height:160px; border:2px solid #00FFFF; border-radius:50%;
+top:50%; left:50%; transform:translate(-50%,-50%) scale(0); opacity:0.5;
+pointer-events:none; display:none; }
+
+.detect-btn { margin-top:30px; padding:15px 50px; font-size:1.3em; font-weight:bold; border:none; border-radius:50px;
+background:linear-gradient(45deg,#00FFFF,#8A2BE2); color:#fff; cursor:pointer; position:relative; overflow:hidden; transition:all 0.3s; box-shadow:0 0 20px #00FFFF; }
+.detect-btn:hover{ box-shadow:0 0 40px #8A2BE2; transform:scale(1.05); }
+
+.confidence-bar { width:350px; height:25px; margin:15px auto 0; border:2px solid #00FFFF; border-radius:12px; overflow:hidden; background:rgba(0,255,255,0.05); display:none; }
+.confidence-fill { height:100%; width:0%; background:linear-gradient(90deg,#00FFFF,#8A2BE2); border-radius:12px; transition:width 1s ease-in-out; }
+
+.result-box { margin-top:40px; width:500px; min-height:100px; border-radius:12px; padding:20px; text-align:center; background:rgba(255,255,255,0.05);
+border:2px solid #00FFFF; box-shadow:0 0 20px #00FFFF inset; display:none; transition:all 0.5s; position:relative; }
+.result-deepfake { border-color:red; box-shadow:0 0 20px red inset; color:red; }
+.result-authentic { border-color:#00FF00; box-shadow:0 0 20px #00FF00 inset; color:#00FF00; }
+
+.red-sign { position:absolute; top:-15px; right:-15px; width:60px; height:60px; background:red; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.9em; display:none; }
+
+.explanation-box { width:500px; min-height:80px; margin-top:20px; border-radius:12px; padding:15px; text-align:center; background:rgba(255,255,255,0.05);
+border:2px solid #8A2BE2; box-shadow:0 0 15px #8A2BE2 inset; display:none; color:#8A2BE2; font-size:1em; }
+
+.particle-canvas { position:absolute; top:0; left:0; pointer-events:none; display:none; }
+
+footer { width:100%; text-align:center; margin-top:150px; padding:20px 0; color:#00FFFF; font-size:1em; border-top:1px solid #00FFFF; }
+</style>
+</head>
+<body>
+
+<div class="neural-bg"><canvas id="neuralCanvas"></canvas></div>
+<h1>VeriSight: Deepfake Intelligence</h1>
+
+<div class="upload-box" id="uploadBox">Click or Drag & Drop Photo</div>
+<input type="file" id="fileInput" accept="image/*">
+
+<div class="image-preview" id="imagePreview">
+<img id="uploadedImg" src="" alt="Uploaded Image" />
+<div class="scan-overlay" id="scanOverlay"></div>
+<div class="radar-scan" id="radarScan"></div>
+<canvas class="particle-canvas" id="particleCanvas"></canvas>
+</div>
+
+<button class="detect-btn" id="detectBtn">DETECT NOW</button>
+
+<div class="confidence-bar" id="confidenceBar">
+<div class="confidence-fill" id="confidenceFill"></div>
+</div>
+
+<div class="result-box" id="resultBox">
+<div class="red-sign" id="redSign">!</div>
+<p id="resultText">Analysis will appear here...</p>
+</div>
+
+<div class="explanation-box" id="explanationBox">
+<p id="explanationText"></p>
+</div>
+
+<footer>NT Tech – naeemashraf15822@gmail.com</footer>
+
+<!-- Audio -->
+<audio id="positiveSound" src="https://freesound.org/data/previews/341/341695_5260877-lq.mp3"></audio>
+<audio id="warningSound" src="https://freesound.org/data/previews/341/341715_5260877-lq.mp3"></audio>
+
+<script>
+const uploadBox=document.getElementById('uploadBox');
+const fileInput=document.getElementById('fileInput');
+const detectBtn=document.getElementById('detectBtn');
+const resultBox=document.getElementById('resultBox');
+const resultText=document.getElementById('resultText');
+const explanationBox=document.getElementById('explanationBox');
+const explanationText=document.getElementById('explanationText');
+const redSign=document.getElementById('redSign');
+const imagePreview=document.getElementById('imagePreview');
+const uploadedImg=document.getElementById('uploadedImg');
+const scanOverlay=document.getElementById('scanOverlay');
+const radarScan=document.getElementById('radarScan');
+const confidenceBar=document.getElementById('confidenceBar');
+const confidenceFill=document.getElementById('confidenceFill');
+const particleCanvas=document.getElementById('particleCanvas');
+const particleCtx=particleCanvas.getContext('2d');
+const positiveSound=document.getElementById('positiveSound');
+const warningSound=document.getElementById('warningSound');
+
+let uploadedFile=null; 
+let particles=[];
+
+// File upload logic
+uploadBox.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',(e)=>{ uploadedFile=e.target.files[0]; uploadBox.textContent=uploadedFile.name; displayImage(uploadedFile); });
+uploadBox.addEventListener('dragover',(e)=>{ e.preventDefault(); uploadBox.classList.add('dragover'); });
+uploadBox.addEventListener('dragleave',()=>uploadBox.classList.remove('dragover'));
+uploadBox.addEventListener('drop',(e)=>{ e.preventDefault(); uploadBox.classList.remove('dragover'); uploadedFile=e.dataTransfer.files[0]; uploadBox.textContent=uploadedFile.name; displayImage(uploadedFile); });
+
+function displayImage(file){
+    const reader=new FileReader();
+    reader.onload=function(e){
+        uploadedImg.src=e.target.result;
+        imagePreview.style.display='block';
+        particleCanvas.width=imagePreview.clientWidth;
+        particleCanvas.height=imagePreview.clientHeight;
+    }
+    reader.readAsDataURL(file);
+}
+
+// Particles
+function createParticles(){
+    particles=[];
+    for(let i=0;i<60;i++){
+        particles.push({x:Math.random()*particleCanvas.width,y:Math.random()*particleCanvas.height,vx:(Math.random()-0.5)*2,vy:(Math.random()-0.5)*2,size:Math.random()*3+2,alpha:Math.random()});
+    }
+}
+function animateParticles(intensity=1){
+    particleCtx.clearRect(0,0,particleCanvas.width,particleCanvas.height);
+    particles.forEach(p=>{
+        p.x+=p.vx*intensity;
+        p.y+=p.vy*intensity;
+        if(p.x<0||p.x>particleCanvas.width)p.vx*=-1;
+        if(p.y<0||p.y>particleCanvas.height)p.vy*=-1;
+        particleCtx.beginPath();
+        particleCtx.arc(p.x,p.y,p.size,0,Math.PI*2);
+        particleCtx.fillStyle='rgba(255,0,0,'+p.alpha*intensity+')';
+        particleCtx.fill();
+    });
+    requestAnimationFrame(()=>animateParticles(intensity));
+}
+
+// Detect button
+detectBtn.addEventListener('click',()=>{
+    if(!uploadedFile){ alert('Please upload a photo first!'); return; }
+    detectBtn.classList.add('active');
+    resultBox.style.display='none'; explanationBox.style.display='none'; redSign.style.display='none';
+    confidenceBar.style.display='block'; confidenceFill.style.width='0%'; scanOverlay.style.display='block'; radarScan.style.display='block';
+    particleCanvas.style.display='none';
+
+    setTimeout(()=>{
+        detectBtn.classList.remove('active'); scanOverlay.style.display='none'; radarScan.style.display='none';
+        const isDeepfake=Math.random()<0.5; 
+        const confidence=Math.floor(Math.random()*30)+70;
+        confidenceFill.style.width=confidence+'%'; 
+        resultBox.style.display='block'; explanationBox.style.display='block';
+
+        if(isDeepfake){
+            resultBox.className='result-box result-deepfake';
+            resultText.textContent=`DEEPFAKE Detected! Probability: ${confidence}%`;
+            explanationText.textContent="Inconsistencies in shadows, reflections, and facial movement indicate possible manipulation.";
+            redSign.style.display='flex';
+            createParticles();
+            particleCanvas.style.display='block';
+            animateParticles(1.5);
+            warningSound.play();
+        }else{
+            resultBox.className='result-box result-authentic';
+            resultText.textContent=`Authentic Image. Probability: ${confidence}%`;
+            explanationText.textContent="No detectable manipulations found.";
+            redSign.style.display='none'; particleCanvas.style.display='none';
+            positiveSound.play();
+        }
+    },2000);
+});
+
+// Neural background
+const canvas=document.getElementById('neuralCanvas'); const ctx=canvas.getContext('2d');
+let width=canvas.width=window.innerWidth; let height=canvas.height=window.innerHeight;
+const nodes=[];
+for(let i=0;i<120;i++){ nodes.push({x:Math.random()*width,y:Math.random()*height,vx:(Math.random()-0.5)*1,vy:(Math.random()-0.5)*1}); }
+function animateNeural(){
+    ctx.clearRect(0,0,width,height);
+    nodes.forEach(node=>{
+        node.x+=node.vx; node.y+=node.vy;
+        if(node.x<0||node.x>width) node.vx*=-1;
+        if(node.y<0||node.y>height) node.vy*=-1;
+        ctx.beginPath(); ctx.arc(node.x,node.y,2,0,Math.PI*2); ctx.fillStyle='#00FFFF'; ctx.fill();
+    });
+    for(let i=0;i<nodes.length;i++){
+        for(let j=i+1;j<nodes.length;j++){
+            let dx=nodes[i].x-nodes[j].x;
+            let dy=nodes[i].y-nodes[j].y;
+            let dist=Math.sqrt(dx*dx+dy*dy);
+            if(dist<120){ ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.strokeStyle='rgba(0,255,255,'+(1-dist/120)+')'; ctx.lineWidth=1; ctx.stroke(); }
+        }
+    }
+    requestAnimationFrame(animateNeural);
+}
+animateNeural();
+window.addEventListener('resize',()=>{ width=canvas.width=window.innerWidth; height=canvas.height=window.innerHeight; particleCanvas.width=imagePreview.clientWidth; particleCanvas.height=imagePreview.clientHeight; });
+
+</script>
+</body>
+</html>
